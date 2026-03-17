@@ -12,13 +12,13 @@ const features = [
 
 const pageVariants = {
   initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut", staggerChildren: 0.12 } },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const, staggerChildren: 0.12 } },
   exit: { opacity: 0, y: -20, transition: { duration: 0.3 } },
 };
 
 const childVariants = {
   initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
 };
 
 const Settings = () => {
