@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Pause, Play, SkipBack, SkipForward, Settings } from "lucide-react";
 import Equalizer from "@/components/Equalizer";
+
+const API = "https://dj-echo-production.up.railway.app";
 
 const pageVariants = {
   initial: { opacity: 0, y: 20 },
@@ -19,12 +21,48 @@ const Index = () => {
   const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isListening, setIsListening] = useState(false);
-
-  const currentTrack = {
+  const [currentTrack, setCurrentTrack] = useState({
     title: "Waiting for Echo…",
     artist: "Press the mic to start",
     cover: null as string | null,
+  });
+
+  const fetchPlayer = async () => {
+    try {
+      const res = await fetch(`${API}/player`, { credentials: "include" });
+      const data = await res.json();
+      setCurrentTrack({
+        title: data.track,
+        artist: data.artists.join(", "),
+        cover: null,
+      });
+      setIsPlaying(data.is_playing);
+    } catch (e) {
+      console.error("Failed to fetch player", e);
+    }
   };
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const res = await fetch(`${API}/auth/status`, { credentials: "include" });
+        const data = await res.json();
+        if (!data.loggedIn) {
+          window.location.href = `${API}/auth/login`;
+          return;
+        }
+        fetchPlayer();
+        const interval = setInterval(fetchPlayer, 5000);
+        return () => clearInterval(interval);
+      } catch (e) {
+        console.error("Auth check failed", e);
+      }
+    };
+
+    let cleanup: (() => void) | undefined;
+    init().then((fn) => { cleanup = fn; });
+    return () => { cleanup?.(); };
+  }, []);
 
   return (
     <motion.div
