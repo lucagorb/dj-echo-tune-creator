@@ -83,6 +83,13 @@ const Index = () => {
       const res = await fetch(`${API}/livekit/token`, { credentials: "include" });
       const { token, url } = await res.json();
       const room = new Room();
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) {
+          const audioEl = track.attach();
+          audioEl.autoplay = true;
+          document.body.appendChild(audioEl);
+        }
+      });
       await room.startAudio();
       await room.connect(url, token);
       setLivekitRoom(room);
