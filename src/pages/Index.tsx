@@ -134,7 +134,14 @@ const Index = () => {
           <motion.button
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.92 }}
-            onClick={() => setIsPlaying(!isPlaying)}
+            onClick={async () => {
+              try {
+                await fetch(`${API}/${isPlaying ? "pause" : "play"}`, { method: "POST", credentials: "include" });
+                setIsPlaying(!isPlaying);
+              } catch (e) {
+                console.error("Play/pause failed", e);
+              }
+            }}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-card border border-border text-foreground transition-all hover:border-primary/40"
             aria-label={isPlaying ? "Pause" : "Play"}
           >
