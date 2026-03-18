@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Pause, Play, SkipBack, SkipForward, Settings } from "lucide-react";
 import Equalizer from "@/components/Equalizer";
-import { Room, RoomEvent, createLocalAudioTrack, TrackPublishOptions } from "livekit-client";
+import { Room, RoomEvent, createLocalAudioTrack, type TrackPublishOptions } from "livekit-client";
 
 const API = "https://dj-echo-production.up.railway.app";
 
