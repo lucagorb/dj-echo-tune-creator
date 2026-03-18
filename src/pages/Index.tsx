@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Pause, Play, SkipBack, SkipForward, Settings } from "lucide-react";
@@ -6,6 +6,8 @@ import Equalizer from "@/components/Equalizer";
 import { Room, RoomEvent, createLocalAudioTrack, type TrackPublishOptions } from "livekit-client";
 
 const API = "https://dj-echo-production.up.railway.app";
+
+type Phase = "landing" | "greeting" | "main";
 
 const pageVariants = {
   initial: { opacity: 0, y: 20 },
@@ -20,18 +22,19 @@ const childVariants = {
 
 const Index = () => {
   const navigate = useNavigate();
+  const [phase, setPhase] = useState<Phase>("landing");
   const [isPlaying, setIsPlaying] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [livekitRoom, setLivekitRoom] = useState<Room | null>(null);
-  const [sessionStarted, setSessionStarted] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [greetingMessage, setGreetingMessage] = useState<string | null>(null);
   const [currentTrack, setCurrentTrack] = useState({
     title: "Waiting for Echo…",
     artist: "Press the mic to start",
     cover: null as string | null,
   });
 
-  const fetchPlayer = async () => {
+  const fetchPlayer = useCallback(async () => {
     try {
       const res = await fetch(`${API}/player`, { credentials: "include" });
       const data = await res.json();
@@ -44,7 +47,7 @@ const Index = () => {
     } catch (e) {
       console.error("Failed to fetch player", e);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const init = async () => {
@@ -66,7 +69,7 @@ const Index = () => {
     let cleanup: (() => void) | undefined;
     init().then((fn) => { cleanup = fn; });
     return () => { cleanup?.(); };
-  }, []);
+  }, [fetchPlayer]);
 
   useEffect(() => {
     return () => {
@@ -83,7 +86,29 @@ const Index = () => {
       await room.startAudio();
       await room.connect(url, token);
       setLivekitRoom(room);
-      setSessionStarted(true);
+      setPhase("greeting");
+
+      // Fallback: move to main after 10s
+      const fallbackTimer = setTimeout(() => {
+        fetchPlayer();
+        setPhase("main");
+      }, 10000);
+
+      room.on(RoomEvent.DataReceived, (data: Uint8Array) => {
+        try {
+          const parsed = JSON.parse(new TextDecoder().decode(data));
+          if (parsed.djResponse) {
+            setGreetingMessage(parsed.djResponse);
+            clearTimeout(fallbackTimer);
+            setTimeout(() => {
+              fetchPlayer();
+              setPhase("main");
+            }, 4000);
+          }
+        } catch (err) {
+          console.error("Failed to parse data", err);
+        }
+      });
     } catch (e) {
       console.error("LiveKit connection failed", e);
     } finally {
@@ -94,7 +119,6 @@ const Index = () => {
   const handleToggleMic = async () => {
     if (!livekitRoom) return;
     if (isListening) {
-      // Unpublish all audio tracks
       const publications = livekitRoom.localParticipant.audioTrackPublications;
       publications.forEach((pub) => {
         if (pub.track) {
@@ -147,13 +171,12 @@ const Index = () => {
       </motion.header>
 
       <AnimatePresence mode="wait">
-        {!sessionStarted ? (
-          /* Phase 1: Start Session */
+        {phase === "landing" && (
           <motion.div
-            key="start-session"
+            key="landing"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
+            exit={{ opacity: 0, scale: 0.9, y: -30 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
             className="flex flex-col items-center justify-center gap-6 relative z-10 flex-1"
           >
@@ -178,17 +201,67 @@ const Index = () => {
               {isConnecting ? "Connecting…" : "Start Session"}
             </motion.button>
           </motion.div>
-        ) : (
-          /* Phase 2: Full DJ Interface */
+        )}
+
+        {phase === "greeting" && (
           <motion.div
-            key="dj-interface"
+            key="greeting"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.05, y: -20 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="flex flex-col items-center justify-center gap-8 relative z-10 flex-1"
+          >
+            <motion.div
+              className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center"
+              animate={{ scale: [1, 1.15, 1], opacity: [0.7, 1, 0.7] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <motion.div
+                className="w-8 h-8 rounded-full bg-primary/30"
+                animate={{ scale: [1, 1.3, 1] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
+              />
+            </motion.div>
+
+            <AnimatePresence mode="wait">
+              {greetingMessage ? (
+                <motion.blockquote
+                  key="quote"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-center max-w-xs"
+                >
+                  <p className="text-lg font-medium italic text-foreground leading-relaxed">
+                    "{greetingMessage}"
+                  </p>
+                  <footer className="text-xs text-muted-foreground mt-3 font-mono tracking-widest uppercase">— Echo</footer>
+                </motion.blockquote>
+              ) : (
+                <motion.p
+                  key="tuning"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="text-sm text-muted-foreground font-mono tracking-wider"
+                >
+                  Echo is tuning in…
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+
+        {phase === "main" && (
+          <motion.div
+            key="main"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
             className="flex flex-col items-center gap-6 relative z-10"
           >
-            {/* Album Art + Track Info */}
+            {/* Album Art */}
             <motion.div
               className="w-56 h-56 md:w-64 md:h-64 rounded-2xl bg-card border border-border flex items-center justify-center overflow-hidden shadow-lg"
               animate={isPlaying ? { rotate: [0, 0.5, -0.5, 0] } : {}}
@@ -212,8 +285,8 @@ const Index = () => {
         )}
       </AnimatePresence>
 
-      {/* Controls - only visible in Phase 2 */}
-      {sessionStarted && (
+      {/* Controls - only in main phase */}
+      {phase === "main" && (
         <motion.div
           variants={childVariants}
           initial="initial"
@@ -295,8 +368,8 @@ const Index = () => {
         </motion.div>
       )}
 
-      {/* Spacer for Phase 1 */}
-      {!sessionStarted && <div />}
+      {/* Spacer for non-main phases */}
+      {phase !== "main" && <div />}
     </motion.div>
   );
 };
