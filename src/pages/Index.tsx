@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Pause, Play, SkipBack, SkipForward, Settings } from "lucide-react";
 import Equalizer from "@/components/Equalizer";
-import { Room, RoomEvent, createLocalAudioTrack, type TrackPublishOptions } from "livekit-client";
+import { Room, RoomEvent, Track, createLocalAudioTrack, type TrackPublishOptions } from "livekit-client";
 
 const API = "https://dj-echo-production.up.railway.app";
 
@@ -83,6 +83,13 @@ const Index = () => {
       const res = await fetch(`${API}/livekit/token`, { credentials: "include" });
       const { token, url } = await res.json();
       const room = new Room();
+      room.on(RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === Track.Kind.Audio) {
+          const audioEl = track.attach();
+          audioEl.autoplay = true;
+          document.body.appendChild(audioEl);
+        }
+      });
       await room.startAudio();
       await room.connect(url, token);
       setLivekitRoom(room);
