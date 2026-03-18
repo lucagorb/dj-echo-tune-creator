@@ -202,7 +202,7 @@ const Index = () => {
               await room.startAudio();
               await room.connect(url, token);
               const track = await createLocalAudioTrack();
-              await room.localParticipant!.publishTrack(track, new TrackPublishOptions());
+              await room.localParticipant!.publishTrack(track, {} as TrackPublishOptions);
               setLivekitRoom(room);
               setIsListening(true);
             } catch (e) {
