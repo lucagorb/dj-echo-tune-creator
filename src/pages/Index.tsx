@@ -161,6 +161,14 @@ const Index = () => {
           <motion.button
             whileHover={{ scale: 1.12 }}
             whileTap={{ scale: 0.88 }}
+            onClick={async () => {
+              try {
+                await fetch(`${API}/next`, { method: "POST", credentials: "include" });
+                setTimeout(fetchPlayer, 1000);
+              } catch (e) {
+                console.error("Skip failed", e);
+              }
+            }}
             className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary/80"
             aria-label="Next track"
           >
