@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, Pause, Play, SkipBack, SkipForward, Settings } from "lucide-react";
 import Equalizer from "@/components/Equalizer";
+import { Room, RoomEvent, createLocalAudioTrack, type TrackPublishOptions } from "livekit-client";
 
 const API = "https://dj-echo-production.up.railway.app";
 
@@ -21,6 +22,7 @@ const Index = () => {
   const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [livekitRoom, setLivekitRoom] = useState<Room | null>(null);
   const [currentTrack, setCurrentTrack] = useState({
     title: "Waiting for Echo…",
     artist: "Press the mic to start",
@@ -63,6 +65,12 @@ const Index = () => {
     init().then((fn) => { cleanup = fn; });
     return () => { cleanup?.(); };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      livekitRoom?.disconnect();
+    };
+  }, [livekitRoom]);
 
   return (
     <motion.div
@@ -180,7 +188,28 @@ const Index = () => {
         <motion.button
           whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.96 }}
-          onClick={() => setIsListening(!isListening)}
+          onClick={async () => {
+            if (isListening) {
+              livekitRoom?.disconnect();
+              setLivekitRoom(null);
+              setIsListening(false);
+              return;
+            }
+            try {
+              const res = await fetch(`${API}/livekit/token`, { credentials: "include" });
+              const { token, url } = await res.json();
+              const room = new Room();
+              await room.startAudio();
+              await room.connect(url, token);
+              const track = await createLocalAudioTrack();
+              await room.localParticipant!.publishTrack(track, {} as TrackPublishOptions);
+              setLivekitRoom(room);
+              setIsListening(true);
+            } catch (e) {
+              console.error("LiveKit connection failed", e);
+              setIsListening(false);
+            }
+          }}
           className={`flex items-center gap-2.5 rounded-full px-7 py-3.5 text-sm font-semibold transition-all ${
             isListening
               ? "bg-primary text-primary-foreground animate-pulse-glow"
