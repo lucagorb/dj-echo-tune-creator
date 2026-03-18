@@ -66,6 +66,12 @@ const Index = () => {
     return () => { cleanup?.(); };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      livekitRoom?.disconnect();
+    };
+  }, [livekitRoom]);
+
   return (
     <motion.div
       variants={pageVariants}
