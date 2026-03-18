@@ -23,6 +23,8 @@ const Index = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [livekitRoom, setLivekitRoom] = useState<Room | null>(null);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [currentTrack, setCurrentTrack] = useState({
     title: "Waiting for Echo…",
     artist: "Press the mic to start",
@@ -72,6 +74,46 @@ const Index = () => {
     };
   }, [livekitRoom]);
 
+  const handleStartSession = async () => {
+    setIsConnecting(true);
+    try {
+      const res = await fetch(`${API}/livekit/token`, { credentials: "include" });
+      const { token, url } = await res.json();
+      const room = new Room();
+      await room.startAudio();
+      await room.connect(url, token);
+      setLivekitRoom(room);
+      setSessionStarted(true);
+    } catch (e) {
+      console.error("LiveKit connection failed", e);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleToggleMic = async () => {
+    if (!livekitRoom) return;
+    if (isListening) {
+      // Unpublish all audio tracks
+      const publications = livekitRoom.localParticipant.audioTrackPublications;
+      publications.forEach((pub) => {
+        if (pub.track) {
+          livekitRoom.localParticipant.unpublishTrack(pub.track);
+        }
+      });
+      setIsListening(false);
+    } else {
+      try {
+        const track = await createLocalAudioTrack();
+        await livekitRoom.localParticipant.publishTrack(track, {} as TrackPublishOptions);
+        setIsListening(true);
+      } catch (e) {
+        console.error("Mic publish failed", e);
+        setIsListening(false);
+      }
+    }
+  };
+
   return (
     <motion.div
       variants={pageVariants}
@@ -104,125 +146,157 @@ const Index = () => {
         </div>
       </motion.header>
 
-      {/* Album Art + Track Info */}
-      <motion.div variants={childVariants} className="flex flex-col items-center gap-6 relative z-10">
-        <motion.div
-          className="w-56 h-56 md:w-64 md:h-64 rounded-2xl bg-card border border-border flex items-center justify-center overflow-hidden shadow-lg"
-          animate={isPlaying ? { rotate: [0, 0.5, -0.5, 0] } : {}}
-          transition={isPlaying ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : {}}
-        >
-          {currentTrack.cover ? (
-            <img src={currentTrack.cover} alt={currentTrack.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <div className="h-12 w-12 rounded-full border-2 border-dashed border-border" />
-              <span className="text-xs font-mono">No track</span>
+      <AnimatePresence mode="wait">
+        {!sessionStarted ? (
+          /* Phase 1: Start Session */
+          <motion.div
+            key="start-session"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="flex flex-col items-center justify-center gap-6 relative z-10 flex-1"
+          >
+            <motion.div
+              className="w-20 h-20 rounded-full border-2 border-dashed border-primary/30 flex items-center justify-center"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+            >
+              <Mic className="h-8 w-8 text-primary/60" />
+            </motion.div>
+            <div className="text-center">
+              <h2 className="text-xl font-semibold tracking-tight">Ready to vibe?</h2>
+              <p className="text-sm text-muted-foreground mt-1">Start a session to talk to Echo</p>
             </div>
-          )}
-        </motion.div>
-
-        <div className="text-center">
-          <h2 className="text-lg font-semibold tracking-tight">{currentTrack.title}</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{currentTrack.artist}</p>
-        </div>
-      </motion.div>
-
-      {/* Controls */}
-      <motion.div variants={childVariants} className="flex flex-col items-center gap-8 relative z-10 w-full max-w-md pb-4">
-        <div className="flex items-center gap-6">
-          <motion.button
-            whileHover={{ scale: 1.12 }}
-            whileTap={{ scale: 0.88 }}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary/80"
-            aria-label="Previous track"
-          >
-            <SkipBack className="h-5 w-5" />
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.92 }}
-            onClick={async () => {
-              try {
-                await fetch(`${API}/${isPlaying ? "pause" : "play"}`, { method: "POST", credentials: "include" });
-                setIsPlaying(!isPlaying);
-              } catch (e) {
-                console.error("Play/pause failed", e);
-              }
-            }}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-card border border-border text-foreground transition-all hover:border-primary/40"
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            <AnimatePresence mode="wait">
-              {isPlaying ? (
-                <motion.div key="pause" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0, rotate: 90 }} transition={{ duration: 0.2 }}>
-                  <Pause className="h-6 w-6" />
-                </motion.div>
-              ) : (
-                <motion.div key="play" initial={{ scale: 0, rotate: 90 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0, rotate: -90 }} transition={{ duration: 0.2 }}>
-                  <Play className="h-6 w-6 ml-0.5" />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.12 }}
-            whileTap={{ scale: 0.88 }}
-            onClick={async () => {
-              try {
-                await fetch(`${API}/next`, { method: "POST", credentials: "include" });
-                setTimeout(fetchPlayer, 1000);
-              } catch (e) {
-                console.error("Skip failed", e);
-              }
-            }}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary/80"
-            aria-label="Next track"
-          >
-            <SkipForward className="h-5 w-5" />
-          </motion.button>
-        </div>
-
-        {/* Talk to DJ */}
-        <motion.button
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.96 }}
-          onClick={async () => {
-            if (isListening) {
-              livekitRoom?.disconnect();
-              setLivekitRoom(null);
-              setIsListening(false);
-              return;
-            }
-            try {
-              const res = await fetch(`${API}/livekit/token`, { credentials: "include" });
-              const { token, url } = await res.json();
-              const room = new Room();
-              await room.startAudio();
-              await room.connect(url, token);
-              const track = await createLocalAudioTrack();
-              await room.localParticipant!.publishTrack(track, {} as TrackPublishOptions);
-              setLivekitRoom(room);
-              setIsListening(true);
-            } catch (e) {
-              console.error("LiveKit connection failed", e);
-              setIsListening(false);
-            }
-          }}
-          className={`flex items-center gap-2.5 rounded-full px-7 py-3.5 text-sm font-semibold transition-all ${
-            isListening
-              ? "bg-primary text-primary-foreground animate-pulse-glow"
-              : "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
-          }`}
-          aria-label="Talk to DJ Echo"
-        >
-          <motion.div animate={isListening ? { scale: [1, 1.2, 1] } : {}} transition={isListening ? { duration: 1, repeat: Infinity } : {}}>
-            <Mic className="h-4 w-4" />
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={handleStartSession}
+              disabled={isConnecting}
+              className="flex items-center gap-2.5 rounded-full px-8 py-4 text-sm font-semibold bg-primary text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50"
+            >
+              {isConnecting ? "Connecting…" : "Start Session"}
+            </motion.button>
           </motion.div>
-          {isListening ? "Listening…" : "Talk to Echo"}
-        </motion.button>
-      </motion.div>
+        ) : (
+          /* Phase 2: Full DJ Interface */
+          <motion.div
+            key="dj-interface"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="flex flex-col items-center gap-6 relative z-10"
+          >
+            {/* Album Art + Track Info */}
+            <motion.div
+              className="w-56 h-56 md:w-64 md:h-64 rounded-2xl bg-card border border-border flex items-center justify-center overflow-hidden shadow-lg"
+              animate={isPlaying ? { rotate: [0, 0.5, -0.5, 0] } : {}}
+              transition={isPlaying ? { duration: 4, repeat: Infinity, ease: "easeInOut" } : {}}
+            >
+              {currentTrack.cover ? (
+                <img src={currentTrack.cover} alt={currentTrack.title} className="w-full h-full object-cover" />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <div className="h-12 w-12 rounded-full border-2 border-dashed border-border" />
+                  <span className="text-xs font-mono">No track</span>
+                </div>
+              )}
+            </motion.div>
+
+            <div className="text-center">
+              <h2 className="text-lg font-semibold tracking-tight">{currentTrack.title}</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">{currentTrack.artist}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Controls - only visible in Phase 2 */}
+      {sessionStarted && (
+        <motion.div
+          variants={childVariants}
+          initial="initial"
+          animate="animate"
+          className="flex flex-col items-center gap-8 relative z-10 w-full max-w-md pb-4"
+        >
+          <div className="flex items-center gap-6">
+            <motion.button
+              whileHover={{ scale: 1.12 }}
+              whileTap={{ scale: 0.88 }}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary/80"
+              aria-label="Previous track"
+            >
+              <SkipBack className="h-5 w-5" />
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              onClick={async () => {
+                try {
+                  await fetch(`${API}/${isPlaying ? "pause" : "play"}`, { method: "POST", credentials: "include" });
+                  setIsPlaying(!isPlaying);
+                } catch (e) {
+                  console.error("Play/pause failed", e);
+                }
+              }}
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-card border border-border text-foreground transition-all hover:border-primary/40"
+              aria-label={isPlaying ? "Pause" : "Play"}
+            >
+              <AnimatePresence mode="wait">
+                {isPlaying ? (
+                  <motion.div key="pause" initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0, rotate: 90 }} transition={{ duration: 0.2 }}>
+                    <Pause className="h-6 w-6" />
+                  </motion.div>
+                ) : (
+                  <motion.div key="play" initial={{ scale: 0, rotate: 90 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0, rotate: -90 }} transition={{ duration: 0.2 }}>
+                    <Play className="h-6 w-6 ml-0.5" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.12 }}
+              whileTap={{ scale: 0.88 }}
+              onClick={async () => {
+                try {
+                  await fetch(`${API}/next`, { method: "POST", credentials: "include" });
+                  setTimeout(fetchPlayer, 1000);
+                } catch (e) {
+                  console.error("Skip failed", e);
+                }
+              }}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-muted-foreground transition-colors hover:text-foreground hover:bg-secondary/80"
+              aria-label="Next track"
+            >
+              <SkipForward className="h-5 w-5" />
+            </motion.button>
+          </div>
+
+          {/* Talk to DJ */}
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={handleToggleMic}
+            className={`flex items-center gap-2.5 rounded-full px-7 py-3.5 text-sm font-semibold transition-all ${
+              isListening
+                ? "bg-primary text-primary-foreground animate-pulse-glow"
+                : "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+            }`}
+            aria-label="Talk to DJ Echo"
+          >
+            <motion.div animate={isListening ? { scale: [1, 1.2, 1] } : {}} transition={isListening ? { duration: 1, repeat: Infinity } : {}}>
+              <Mic className="h-4 w-4" />
+            </motion.div>
+            {isListening ? "Listening…" : "Talk to Echo"}
+          </motion.button>
+        </motion.div>
+      )}
+
+      {/* Spacer for Phase 1 */}
+      {!sessionStarted && <div />}
     </motion.div>
   );
 };
