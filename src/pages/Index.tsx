@@ -188,7 +188,28 @@ const Index = () => {
         <motion.button
           whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.96 }}
-          onClick={() => setIsListening(!isListening)}
+          onClick={async () => {
+            if (isListening) {
+              livekitRoom?.disconnect();
+              setLivekitRoom(null);
+              setIsListening(false);
+              return;
+            }
+            try {
+              const res = await fetch(`${API}/livekit/token`, { credentials: "include" });
+              const { token, url } = await res.json();
+              const room = new Room();
+              await room.startAudio();
+              await room.connect(url, token);
+              const track = await createLocalAudioTrack();
+              await room.localParticipant!.publishTrack(track, new TrackPublishOptions());
+              setLivekitRoom(room);
+              setIsListening(true);
+            } catch (e) {
+              console.error("LiveKit connection failed", e);
+              setIsListening(false);
+            }
+          }}
           className={`flex items-center gap-2.5 rounded-full px-7 py-3.5 text-sm font-semibold transition-all ${
             isListening
               ? "bg-primary text-primary-foreground animate-pulse-glow"
