@@ -22,6 +22,7 @@ const Index = () => {
   const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [livekitRoom, setLivekitRoom] = useState<Room | null>(null);
   const [currentTrack, setCurrentTrack] = useState({
     title: "Waiting for Echo…",
     artist: "Press the mic to start",
